@@ -1,0 +1,24 @@
+.row {
+  margin-bottom: 20px;
+}
+
+#audiocontainer .row {
+  margin-bottom: 0;
+}
+
+#audiocontainer {
+  margin-bottom: 20px;
+}
+
+.btn-hover:hover {
+  background-image: none;
+}
+
+.btn-hover:hover i {
+  background-image: url("../img/glyphicons-halflings-white.png");
+}
+
+.btn-hover-danger:hover {
+  color: #fff;
+  background-color: #bd362f;
+}
