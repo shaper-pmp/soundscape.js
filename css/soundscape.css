@@ -2,12 +2,20 @@
   margin-bottom: 20px;
 }
 
+#audiocontainer {
+  margin-bottom: 20px;
+}
+
 #audiocontainer .row {
   margin-bottom: 0;
 }
 
-#audiocontainer {
-  margin-bottom: 20px;
+.audiotrack .control-group {
+  margin-bottom: 0;
+}
+
+.audiotrack .control-label {
+  width: auto;
 }
 
 .btn-hover:hover {

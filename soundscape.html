@@ -16,13 +16,13 @@
   <body>
     <div class="container">
       <div id="controls" class="row">
-        <div class="span7">
+        <div class="span8">
           <div class="btn-group">
             <button id="play" class="btn" onclick="player.play();">Play</button>
             <button id="pause" class="btn" onclick="player.pause();">Pause</button>
           </div>
         </div>
-        <div class="span3">
+        <div class="span4">
           <div class="btn-group">
             <button onclick="player.setVol(0);" class="btn"><i class="icon-volume-off"></i></button>
             <button onclick="player.changeVol(-0.1);" class="btn"><i class="icon-volume-down"></i></button>
@@ -179,18 +179,20 @@
       $(document).ready(function() {
         player.init();
         // Render predefined channels
-        player.addChannel({
+        /*player.addChannel({
+            name: "Rain",
             src: "rain-02.mp3",
             type: "audio/mp3",
             controls: true,
             loop: true,
         });
         player.addChannel({
+            name: "Frogs",
             src: "64734%5Efrog11.mp3",
             type: "audio/mp3",
             controls: true,
             loop: false,
-        });
+        });*/
         
         // Add event handlers
         /*$("#addchannel").on('click', function() {
@@ -207,29 +209,49 @@
       </div>
       <div class="modal-body">
         <form class="form-horizontal">
-          <div class="input-prepend input-append">
-             <span class="add-on">URL</span>
-            <input class="span2" id="src" type="text">
-            <input class="add-on btn" id="src-local" type="file" onchange="
-              var reader = new FileReader();
-              console.log(this.files[0]);
-              reader.addEventListener('load', function(event) {
-                var mp3file = event.target;
-                console.log(document.getElementById('src'));
-                console.log(mp3file);
-                var src_element = document.getElementById('src');
-                src_element.value = mp3file.result;
-                $('#filename-hint')[0].innerText = $('#src-local')[0].files[0].name;
-                
-                console.log(document.getElementById('src').value);
-              });
-              reader.readAsDataURL(this.files[0]);
-            ">
+          <div class="control-group">
+            <label class="control-label" for="name">Name</label>
+            <div class="controls">
+              <input type="text" id="name" placeholder="Descriptive name for channel">
+            </div>
           </div>
-          <span class="label label-success" id="filename-hint"></span>
-          
-          <div class="switch loop" data-on-label="Loop" data-off-label="Once">
-            <input type="checkbox" id="loop" />
+          <div class="control-group">
+            <div class="tabbable">
+              <ul class="nav nav-tabs">
+                <li class="active"><a href="#file-source-url" data-toggle="tab">URL</a></li>
+                <li><a href="#file-source-local" data-toggle="tab">Local file</a></li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane active" id="file-source-url">
+                  <input class="input-block-level" id="src" type="text" placeholder="URL of music file...">
+                </div>
+                <div class="tab-pane" id="file-source-local">
+                  <input class="add-on btn" id="src-local" type="file" accept="audio/*" onchange="
+                    var reader = new FileReader();
+                    console.log(this.files[0]);
+                    reader.addEventListener('load', function(event) {
+                      var mp3file = event.target;
+                      console.log(document.getElementById('src'));
+                      console.log(mp3file);
+                      var src_element = document.getElementById('src');
+                      src_element.value = mp3file.result;
+                    });
+                    reader.readAsDataURL(this.files[0]);
+                  ">
+                  <button onclick="
+                    var fileinputdiv = document.getElementById('file-source-local');
+                    fileinputdiv.innerHTML = ''+fileinputdiv.innerHTML;
+                    $('#file-source-local .file-input-name').remove();
+                    $('#src').val('');
+                    return false;" class="btn btn-hover btn-hover-danger"><i class="icon-remove"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="control-group well">
+            <div class="switch loop" data-on-label="Loop" data-off-label="Once">
+              <input type="checkbox" id="loop" />
+            </div>
           </div>
           
         </form>
@@ -240,6 +262,7 @@
           var form = $(self).closest('.modal');
           form.modal('hide');
           var newchannel = {
+            name: form.find('#name').val(),
             src: form.find('#src').val(),
             type: 'audio/mp3',
             controls: true,
@@ -253,7 +276,12 @@
     
     <!-- Reusable templates -->
     <script type="text/x-html-template" id="audiotrack">
-      <div class="audiotrack row" id="track-{{id}}">
+      <div class="audiotrack row form-horizontal" id="track-{{id}}">
+        <div class="span1">
+          <div class="control-group">
+            <label class="control-label">{{name}}</label>
+          </div>
+        </div>
         <audio class="span5" id="audio-{{id}}" src="{{src}}" {{controls}} {{loop}}></audio>
         <div class="span2">
           <div class="switch loop" data-on-label="Loop" data-off-label="Once">
@@ -267,7 +295,7 @@
             <button onclick="player.changeVol(0.1, {{id}});" class="btn" title="Volume up" data-toggle="tooltip"><i class="icon-volume-up"></i></button>
           </div>
         </div>
-        <div class="span3">
+        <div class="span2">
           <button onclick="player.removeChannel({{id}});" class="btn btn-hover btn-hover-danger"><i class="icon-remove"></i></button>
         </div>
       </div>
