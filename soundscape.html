@@ -5,24 +5,34 @@
     <meta http-equiv="X-UA-Compatible" content="IE=9; IE=8;" />
     
     <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
-    <link rel="stylesheet" href="css/bootstrapSwitch.css">
+    <!-- <link rel="stylesheet" href="css/bootstrapSwitch.css"> -->
+    <link rel="stylesheet" href="css/bootstrap-select.css">
+      <link rel="stylesheet" href="css/bootstrap-spinedit.css">
     <link rel="stylesheet" href="css/soundscape.css">
     
     <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js" type="text/javascript"></script>
     <script src="js/bootstrap.min.js"></script>
-    <script src="js/bootstrapSwitch.js"></script>
+    <!-- <script src="js/bootstrapSwitch.js"></script> -->
+    <script src="js/bootstrap-select.js"></script>
+    <script src="js/bootstrap-spinedit.js"></script>
     <script src="js/bootstrap.file-input.js"></script>
   </head>
   <body>
     <div class="container">
-      <div id="controls" class="row">
-        <div class="span8">
-          <div class="btn-group">
-            <button id="play" class="btn" onclick="player.play();">Play</button>
-            <button id="pause" class="btn" onclick="player.pause();">Pause</button>
+      <div id="controls" class="row form-horizontal">
+        <div class="span1">
+          <div class="control-group">
+            <label class="control-label">All</label>
           </div>
         </div>
-        <div class="span4">
+        <div class="span8">
+          <div class="btn-group">
+            <!--<button id="play" class="btn" onclick="player.play();">Play</button>
+            <button id="stop" class="btn" onclick="player.stop();">Stop</button>-->
+            <button id="playstop-all" class="btn" onclick="player.togglePlayStopGlobal();"><i class="icon-play"></i></button>
+          </div>
+        </div>
+        <div class="span3">
           <div class="btn-group">
             <button onclick="player.setVol(0);" class="btn"><i class="icon-volume-off"></i></button>
             <button onclick="player.changeVol(-0.1);" class="btn"><i class="icon-volume-down"></i></button>
@@ -33,19 +43,23 @@
       <div id="audiocontainer"></div>
       <div class="row">
         <div class="span12">
-          <a href="#new-audiotrack-modal" id="addchannel" class="btn" data-toggle="modal">Add channel</a>
+          <a href="#new-audiotrack-modal" id="addchannel" class="btn" onclick="$('#new-audiotrack-modal').modal();return false;">Add channel</a>
         </div>
       </div>
     </div>
     <script type="text/javascript">
-      function test() {
-      };
       
       // Multi-track player
       var player = {
         audioHolder: null,
         channels: {},
         nextChannelId: 0,
+        loopStyles: {
+          'once':0,
+          'continuous':1,
+          'regular':2,
+          'intermittent':3
+        },
         
         init: function() {
           this.audioHolder = $("#audiocontainer");
@@ -62,91 +76,174 @@
         },
         
         createChannel: function(channel) {
-          console.log(channel);
+          
           channel.id = channel.id || this.nextChannelId;
-          channel.loop_checked = channel.loop ? "checked" : "";
+          channel.loop = (channel.loopStyle === 1);
+          
           var audio_element = template.do("audiotrack", channel);
           this.audioHolder.append(audio_element);
           
           channel.container = document.getElementById("track-"+channel.id);
           
           // Set up any bootstrap controls
-          $('.loop', channel.container).bootstrapSwitch();
+          //$('.loop', channel.container).bootstrapSwitch();
+          
+          $('.selectpicker', channel.container).val(channel.loopStyle).selectpicker({});
+          
+          $('.spinedit.repeats', channel.container).spinedit({ minimum: 1 });
+          $('.spinedit.repeat-delay', channel.container).spinedit({ minimum:1 });
           
           channel.audio_element = document.getElementById("audio-"+channel.id);
+          channel.player = this;
+          
+          // Set up event-handlers to synchronise player state with controls
+          $(channel.audio_element).on('play', function(e) {
+            $(e.currentTarget).closest(".audiotrack").find(".playstop i").removeClass("icon-play").addClass("icon-stop");
+            channel.player.setGlobalPlayButton();
+          });
+          $(channel.audio_element).on('pause', function(e) {
+            $(e.currentTarget).closest(".audiotrack").find(".playstop i").removeClass("icon-stop").addClass("icon-play");
+            channel.player.setGlobalPlayButton();
+          });
+          
+          $(channel.audio_element).on('timeupdate', function(e) {
+            var track_container = $(e.currentTarget).closest(".audiotrack");
+            var time = e.currentTarget.currentTime;
+            track_container.find(".track-time").text(""+Math.floor(time/60)+":"+("0"+Math.floor(time%60)).slice(-2));
+          });
+          
+          $(channel.audio_element).on('ended', function(e) {
+            console.log("Ended");
+            
+          });
           
           return channel;
         },
         
         removeChannel: function(track) {
-          console.log(track);
-          if(typeof track !== 'undefined') {
-            $("#track-"+track).remove();
-            delete this.channels[track];
+          this.filterChannels(track, function(index, channel) {
+            $("#track-"+index).remove();
+            delete this.channels[index];
+          });
+        },
+        
+        channelIsPlaying: function(track) {
+          var channelcount = 0, playingcount = 0;
+          this.filterChannels(track, function(index, channel) {
+            channelcount++;
+            playingcount += !channel.audio_element.paused;
+          });
+          
+          return channelcount === playingcount; // Return true if all channels playing, otherwise false
+        },
+        
+        setGlobalPlayButton: function() {
+          if(this.channelIsPlaying()) {
+            $("#playstop-all i").removeClass("icon-play").addClass("icon-stop");
           }
           else {
-            for(var i in this.channels) {
-              $("#track-"+i).remove();
-              delete this.channels[i];
-            }
+            $("#playstop-all i").removeClass("icon-stop").addClass("icon-play");
           }
+        },
+        
+        filterChannels: function(track, callback) {
+          var channels;
+          if(typeof track !== 'undefined') {
+            channels = [this.channels[track]];
+          }
+          else {
+            channels = this.channels;
+          }
+          
+          if(typeof callback === 'function') {
+            $.each(channels, (function(self) {
+              return function(index, channel) {
+                callback.call(self, channel.id, channel);
+              }
+            })(this));
+          }
+          
+          return channels;
         },
         
         play: function(track) {
-          if(typeof track !== 'undefined') {
-            this.channels[track].audio_element.play();
-          }
-          else {
-            for(var i in this.channels) {
-              this.channels[i].audio_element.play();
-            }
-          }
+          
+          this.filterChannels(track, function(index, channel) {
+            //console.log(channel, this);
+            channel.audio_element.play();
+            //$("#playstop-"+index+" i").removeClass("icon-play").addClass("icon-stop");
+          });
         },
         
         pause: function(track) {
-          if(typeof track !== 'undefined') {
-            this.channels[track].audio_element.pause();
+          
+          this.filterChannels(track, function(index, channel) {
+            channel.audio_element.pause();
+            //$("#playstop-"+index+" i").removeClass("icon-pause").addClass("icon-play");
+          });
+        },
+        
+        stop: function(track) {
+          
+          this.filterChannels(track, function(index, channel) {
+            channel.audio_element.pause();
+            channel.audio_element.currentTime = 0;
+            //$("#playstop-"+index+" i").removeClass("icon-stop").addClass("icon-play");
+          });
+        },
+        
+        togglePlayStop: function(track) {
+          
+          this.filterChannels(track, function(index, channel) {
+            if(channel.audio_element.paused) {
+              this.play(index);
+            }
+            else {
+              this.stop(index);
+            }
+          });
+        },
+        
+        togglePlayStopGlobal: function() {
+          if(!this.channelIsPlaying()) {
+            this.play();
           }
           else {
-            for(var i in this.channels) {
-              this.channels[i].audio_element.pause();
-            }
+            this.stop();
           }
         },
-
+        
         setVol: function(level, track) {
-          if(typeof track !== 'undefined') {
-            this.channels[track].audio_element.volume = level;
-          }
-          else {
-            for(var i in this.channels) {
-              this.channels[i].audio_element.volume = level;
-            }
-          }
+          this.filterChannels(track, function(index, channel) {
+            channel.audio_element.volume = level;
+          });
         },
         
         changeVol: function(increment, track) {
-          if(typeof track !== 'undefined') {
-            this.channels[track].audio_element.volume += increment;
-          }
-          else {
-            for(var i in this.channels) {
-              this.channels[i].audio_element.volume += increment;
+          this.filterChannels(track, function(index, channel) {
+            if(increment < 0) {
+              channel.audio_element.volume = ((channel.audio_element.volume + increment < 0) ? 0 : channel.audio_element.volume + increment);
             }
-          }
+            else {
+              channel.audio_element.volume = ((channel.audio_element.volume + increment > 1) ? 1 : channel.audio_element.volume + increment);
+            }
+            
+          });
         },
         
         setLoop: function(state, track) {
-          if(typeof track !== 'undefined') {
-            this.channels[track].audio_element.loop = state;
-          }
-          else {
-            for(var i in this.channels) {
-              this.channels[i].audio_element.loop = state;
+          this.filterChannels(track, function(index, channel) {
+            channel.loop = state;
+            
+            if(state === 0 || state === 1) {  // If "continuous" or "once", just use the audio element's loop attribute
+              channel.audio_element.loop = (state === 1);
             }
-          }
+            else {                            // Regular or intermittent, so disable audio element repeat and handle using setTimeout
+              channel.audio_element.loop = false;
+            }
+            
+          });
         },
-        
       };
       
       
@@ -179,25 +276,20 @@
       $(document).ready(function() {
         player.init();
         // Render predefined channels
-        /*player.addChannel({
+        player.addChannel({
             name: "Rain",
-            src: "rain-02.mp3",
+            src: "file:///C:/Users/James/Desktop/soundscape/rain-02.mp3",
             type: "audio/mp3",
-            controls: true,
-            loop: true,
+            controls: false,
+            loopStyle: 1,
         });
         player.addChannel({
             name: "Frogs",
-            src: "64734%5Efrog11.mp3",
+            src: "file:///C:/Users/James/Desktop/soundscape/64734%5Efrog11.mp3",
             type: "audio/mp3",
-            controls: true,
-            loop: false,
-        });*/
-        
-        // Add event handlers
-        /*$("#addchannel").on('click', function() {
-          
-        });*/
+            controls: false,
+            loopStyle: 0,
+        });
       });
     </script>
     
@@ -228,11 +320,11 @@
                 <div class="tab-pane" id="file-source-local">
                   <input class="add-on btn" id="src-local" type="file" accept="audio/*" onchange="
                     var reader = new FileReader();
-                    console.log(this.files[0]);
+                    //console.log(this.files[0]);
                     reader.addEventListener('load', function(event) {
                       var mp3file = event.target;
-                      console.log(document.getElementById('src'));
-                      console.log(mp3file);
+                      //console.log(document.getElementById('src'));
+                      //console.log(mp3file);
                       var src_element = document.getElementById('src');
                       src_element.value = mp3file.result;
                     });
@@ -248,12 +340,6 @@
               </div>
             </div>
           </div>
-          <div class="control-group well">
-            <div class="switch loop" data-on-label="Loop" data-off-label="Once">
-              <input type="checkbox" id="loop" />
-            </div>
-          </div>
-          
         </form>
       </div>
       <div class="modal-footer">
@@ -265,8 +351,8 @@
             name: form.find('#name').val(),
             src: form.find('#src').val(),
             type: 'audio/mp3',
-            controls: true,
-            loop: !!form.find('#loop:checked').val(),
+            controls: false,
+            loopStyle: 0,
           };
           var newid = player.addChannel(newchannel);
           player.play(newid);
@@ -282,11 +368,26 @@
             <label class="control-label">{{name}}</label>
           </div>
         </div>
-        <audio class="span5" id="audio-{{id}}" src="{{src}}" {{controls}} {{loop}}></audio>
         <div class="span2">
-          <div class="switch loop" data-on-label="Loop" data-off-label="Once">
-            <input type="checkbox" {{loop_checked}} onchange="player.setLoop(this.checked, {{id}});" />
-          </div>
+          <button id="playstop-{{id}}" class="btn playstop" onclick="player.togglePlayStop({{id}});"><i class="icon-play"></i></button>
+          <span class="label label-info track-time">0:00</span>
+          <audio id="audio-{{id}}" src="{{src}}" {{controls}} {{loop}}></audio>
+        </div>
+        <div class="span2">
+          
+          <select class="selectpicker span2" id="loop-{{id}}" onchange="player.setLoop(Number(this.options[this.selectedIndex].value), {{id}});">
+            <option value="0">Once</option>
+            <option value="1">Continuous</option>
+            <option value="2">Regular</option>
+            <option value="3">Intermittent</option>
+          </select>
+          
+        </div>
+        <div class="span4 form-inline ">
+            <input type="text" id="repeats-{{id}}" class="spinedit repeats" />
+            <label class="">times every</label>
+            <input type="text" id="repeat-delay-{{id}}" class="spinedit repeat-delay" />
+            <label class="">seconds</label>
         </div>
         <div class="span2">
           <div class="btn-group">
@@ -295,7 +396,7 @@
             <button onclick="player.changeVol(0.1, {{id}});" class="btn" title="Volume up" data-toggle="tooltip"><i class="icon-volume-up"></i></button>
           </div>
         </div>
-        <div class="span2">
+        <div class="span1">
           <button onclick="player.removeChannel({{id}});" class="btn btn-hover btn-hover-danger"><i class="icon-remove"></i></button>
         </div>
       </div>

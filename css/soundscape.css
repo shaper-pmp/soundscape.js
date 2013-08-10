@@ -7,15 +7,23 @@
 }
 
 #audiocontainer .row {
-  margin-bottom: 0;
+  margin-bottom: 5px;
 }
 
-.audiotrack .control-group {
-  margin-bottom: 0;
-}
-
-.audiotrack .control-label {
+.form-horizontal .control-label {
   width: auto;
+}
+
+.form-horizontal .control-group {
+  margin-bottom: 0;
+}
+
+#audiocontainer .row audio {
+  width: 140px;
+}
+
+#audiocontainer .row .spinedit {
+  width: 25px;
 }
 
 .btn-hover:hover {
