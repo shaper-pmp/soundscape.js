@@ -55,10 +55,10 @@
         channels: {},
         nextChannelId: 0,
         loopStyles: {
-          'once':0,
-          'continuous':1,
-          'regular':2,
-          'intermittent':3
+          'ONCE':0,
+          'CONTINUOUS':1,
+          'REGULAR':2,
+          'INTERMITTENT':3
         },
         
         init: function() {
@@ -78,20 +78,25 @@
         createChannel: function(channel) {
           
           channel.id = channel.id || this.nextChannelId;
+          channel.timers = channel.timers || [];
+          
           channel.loop = (channel.loopStyle === 1);
           
+          for(var i=0; i<4; i++) {
+            channel["loopStyleSelected"+i] = (channel.loopStyle == i) ? "selected='selected'" : "";
+          }
+          
           var audio_element = template.do("audiotrack", channel);
+          
           this.audioHolder.append(audio_element);
           
           channel.container = document.getElementById("track-"+channel.id);
           
           // Set up any bootstrap controls
-          //$('.loop', channel.container).bootstrapSwitch();
+          $('.selectpicker', channel.container).selectpicker({});
           
-          $('.selectpicker', channel.container).val(channel.loopStyle).selectpicker({});
-          
-          $('.spinedit.repeats', channel.container).spinedit({ minimum: 1 });
-          $('.spinedit.repeat-delay', channel.container).spinedit({ minimum:1 });
+          $('.spinedit.repeats', channel.container).spinedit({ minimum: 1, maximum:100000 });
+          $('.spinedit.repeat-period', channel.container).spinedit({ minimum:1, maximum:100000 });
           
           channel.audio_element = document.getElementById("audio-"+channel.id);
           channel.player = this;
@@ -112,9 +117,8 @@
             track_container.find(".track-time").text(""+Math.floor(time/60)+":"+("0"+Math.floor(time%60)).slice(-2));
           });
           
-          $(channel.audio_element).on('ended', function(e) {
-            console.log("Ended");
-            
+          $(channel.audio_element).on('ended', function(e) {  // Audio track finished playing naturally
+            //console.log("Ended");
           });
           
           return channel;
@@ -122,6 +126,7 @@
         
         removeChannel: function(track) {
           this.filterChannels(track, function(index, channel) {
+            channel.player.stop(channel.id);
             $("#track-"+index).remove();
             delete this.channels[index];
           });
@@ -147,9 +152,19 @@
         },
         
         filterChannels: function(track, callback) {
+          
+          if(!this.channels) {
+            return [];
+          }
+          
           var channels;
-          if(typeof track !== 'undefined') {
-            channels = [this.channels[track]];
+          if(track === Number(track)) { // Valid number
+            if(this.channels[track]) {  // Number of an existing track, so select it
+              channels = [this.channels[track]];
+            }
+            else {                      // Number that doesn't correspond to an existing track, so don't do anything
+              channels = [];
+            }
           }
           else {
             channels = this.channels;
@@ -169,9 +184,48 @@
         play: function(track) {
           
           this.filterChannels(track, function(index, channel) {
-            //console.log(channel, this);
-            channel.audio_element.play();
-            //$("#playstop-"+index+" i").removeClass("icon-play").addClass("icon-stop");
+            
+            channel.player.stop(channel.id);
+            
+            if(channel.loopStyle == this.loopStyles.REGULAR || channel.loopStyle == this.loopStyles.INTERMITTENT) {
+              
+              var times = [];
+              
+              if(channel.loopStyle == this.loopStyles.REGULAR) {
+                var gap = (channel.repeatPeriod / channel.repeats) * 1000;  // seconds -> milliseconds
+                times = [];
+                for(var i=0; i<channel.repeats; i++) {
+                  times.push(gap*i);
+                }
+              }
+              else if(channel.loopStyle == this.loopStyles.INTERMITTENT) {
+                for(var i=0; i<channel.repeats; i++) {
+                  times.push(Math.random()*channel.repeatPeriod*1000);
+                  times.sort(); // Store timers in order of their proximity
+                }
+              }
+              
+              console.log("Times: ", times);
+              
+              for(var i=0; i<times.length; i++) {
+                console.log("Scheduling channel "+channel.id+" repeat "+i+" of "+channel.repeats+" at "+times[i]);
+                channel.timers.push(setTimeout(function() {
+                  channel.timers.shift();
+                  channel.audio_element.currentTime = 0;
+                  channel.audio_element.play();
+                }, times[i]));
+              }
+              // Schedule recalculation+restart of whole pattern after repeatPeriod seconds
+              console.log("Scheduling restart of channel "+channel.id+" in "+channel.repeatPeriod);
+              channel.restartTimer = setTimeout(function() {
+                console.log("Restarting channel "+channel.id+" now");
+                channel.player.play(channel.id);
+              }, channel.repeatPeriod*1000);
+
+            }
+            else {
+              channel.audio_element.play();
+            }
           });
         },
         
@@ -179,16 +233,25 @@
           
           this.filterChannels(track, function(index, channel) {
             channel.audio_element.pause();
-            //$("#playstop-"+index+" i").removeClass("icon-pause").addClass("icon-play");
           });
         },
         
         stop: function(track) {
           
           this.filterChannels(track, function(index, channel) {
-            channel.audio_element.pause();
-            channel.audio_element.currentTime = 0;
-            //$("#playstop-"+index+" i").removeClass("icon-stop").addClass("icon-play");
+            
+            console.log("Clearing channel "+channel.id+" restartTimer "+channel.restartTimer+" channel "+index);
+            channel.restartTimer = clearTimeout(channel.restartTimer);
+            
+            console.log("Clearing "+channel.timers.length+" repeats for channel "+index);
+            while(channel.timers.length) {  // Clear any timers (for repeat or intermittent loopStyles)
+              clearTimeout(channel.timers.shift());
+            }
+            
+            if(channel.audio_element) {
+              channel.audio_element.pause();
+              channel.audio_element.currentTime = 0;
+            }
           });
         },
         
@@ -231,19 +294,45 @@
           });
         },
         
-        setLoop: function(state, track) {
-          this.filterChannels(track, function(index, channel) {
-            channel.loop = state;
-            
-            if(state === 0 || state === 1) {  // If "continuous" or "once", just use the audio element's loop attribute
-              channel.audio_element.loop = (state === 1);
-            }
-            else {                            // Regular or intermittent, so disable audio element repeat and handle using setTimeout
-              channel.audio_element.loop = false;
-            }
-            
-          });
+        setLoopStyle: function(loopStyle, track) {
+          var style = Number(loopStyle);
+          
+          if(!isNaN(style)) {
+            this.filterChannels(track, function(index, channel) {
+              channel.loopStyle = style;
+              
+              if(style === 0 || style === 1) {  // If "continuous" or "once", just use the audio element's loop attribute
+                channel.audio_element.loop = (style === 1);
+              }
+              else {                            // Regular or intermittent, so disable audio element repeat and handle using setTimeout
+                channel.audio_element.loop = false;
+              }
+              
+            });
+          }
         },
+        
+        setRepeats: function(repeats, track) {
+          var reps = Number(repeats);
+          
+          if(!isNaN(reps)) {
+            this.filterChannels(track, function(index, channel) {
+              console.log("Setting channel "+channel.id+" to "+reps+" repeats");
+              channel.repeats = reps;
+            });
+          }
+        },
+        
+        setRepeatPeriod: function(repeatPeriod, track) {
+          var period = Number(repeatPeriod);
+          
+          if(!isNaN(period)) {
+            this.filterChannels(track, function(index, channel) {
+              console.log("Setting channel "+channel.id+" to repeatPeriod "+period+"");
+              channel.repeatPeriod = period;
+            });
+          }
+        }
       };
       
       
@@ -282,13 +371,17 @@
             type: "audio/mp3",
             controls: false,
             loopStyle: 1,
+            repeats: 1,
+            repeatPeriod: 1,
         });
         player.addChannel({
             name: "Frogs",
             src: "file:///C:/Users/James/Desktop/soundscape/64734%5Efrog11.mp3",
             type: "audio/mp3",
             controls: false,
-            loopStyle: 0,
+            loopStyle: 2,
+            repeats: 1,
+            repeatPeriod: 4,
         });
       });
     </script>
@@ -353,9 +446,11 @@
             type: 'audio/mp3',
             controls: false,
             loopStyle: 0,
+            repeats: 1,
+            repeatPeriod: 1
           };
           var newid = player.addChannel(newchannel);
-          player.play(newid);
+          //player.play(newid);
         })(this);return false;">Save changes</a>
       </div>
     </div>
@@ -375,18 +470,18 @@
         </div>
         <div class="span2">
           
-          <select class="selectpicker span2" id="loop-{{id}}" onchange="player.setLoop(Number(this.options[this.selectedIndex].value), {{id}});">
-            <option value="0">Once</option>
-            <option value="1">Continuous</option>
-            <option value="2">Regular</option>
-            <option value="3">Intermittent</option>
+          <select class="selectpicker span2" id="loop-{{id}}" onchange="player.setLoopStyle(this.options[this.selectedIndex].value, {{id}});">
+            <option value="0" {{loopStyleSelected0}}>Once</option>
+            <option value="1" {{loopStyleSelected1}}>Continuous</option>
+            <option value="2" {{loopStyleSelected2}}>Regular</option>
+            <option value="3" {{loopStyleSelected3}}>Intermittent</option>
           </select>
           
         </div>
         <div class="span4 form-inline ">
-            <input type="text" id="repeats-{{id}}" class="spinedit repeats" />
+            <input type="text" id="repeats-{{id}}" value="{{repeats}}" class="spinedit repeats" onchange="player.setRepeats(this.value, {{id}})" />
             <label class="">times every</label>
-            <input type="text" id="repeat-delay-{{id}}" class="spinedit repeat-delay" />
+            <input type="text" id="repeat-period-{{id}}" value="{{repeatPeriod}}" class="spinedit repeat-period" onchange="player.setRepeatPeriod(this.value, {{id}})" />
             <label class="">seconds</label>
         </div>
         <div class="span2">
